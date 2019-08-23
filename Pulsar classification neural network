@@ -1,0 +1,96 @@
+import numpy as np 
+import matplotlib.pyplot as plt 
+import tensorflow as tf 
+import pandas as pd 
+import seaborn as sns
+from sklearn.model_selection import train_test_split
+from sklearn.preprocessing import StandardScaler
+from sklearn.metrics import confusion_matrix
+
+data = pd.read_csv('pulsar_stars.csv')
+
+#pairplot
+sns.pairplot(data, hue = 'target_class', height = 2.5, aspect = 1,
+	vars = [' Mean of the integrated profile',
+	' Standard deviation of the integrated profile',
+	' Excess kurtosis of the integrated profile',
+	' Skewness of the integrated profile',
+	' Mean of the DM-SNR curve',
+	' Standard deviation of the DM-SNR curve',
+	' Excess kurtosis of the DM-SNR curve',
+	' Skewness of the DM-SNR curve'])
+
+plt.show()
+
+#heatmap
+sns.heatmap(data.corr(), annot = True)
+
+plt.show()
+
+#model training
+
+y = data['target_class']
+x = data.drop(['target_class'], axis = 1)
+
+x = StandardScaler().fit_transform(x)
+
+xtrain, xtest, ytrain, ytest = train_test_split(x, y, stratify = y, random_state = 1, test_size = 0.2)
+
+model = tf.keras.models.Sequantial()
+
+model.add(tf.keras.layers.Flatten(input_shape = xtrain[0].shape))
+model.add(tf.keras.layers.Dense(12, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(8, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(1, activation = tf.nn.sigmoid))
+
+model.compile(optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
+
+model.fit(xtrain, ytrain, batch_size = 50, epochs = 4)
+
+model.save('pulsar1.model')
+
+#model testing and data manipulation
+
+data = data.drop(data[(data[' Mean of the integrated profile'] > 166)
+	& (data[' Mean of the integreated profile'] < 62)].index)
+data = data.drop(data[(data[' Standard deviation of the DM-SNR curve'] > 50)].index)
+
+y = data['target_class']
+x = data.drop(['target_class'], axis = 1)
+
+x = StandardScaler().fit_transform(x)
+
+xtrain, xtest, ytrain, ytest = train_test_split(x, y, stratify = y, random_state = 1, test_size = 0.2)
+
+model = tf.keras.models.Sequential()
+
+model.add(tf.keras.layers.Flatten(input_shape = xtrain[0].shape))
+model.add(tf.keras.layers.Dense(12, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(8, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(1, activation = tf.nn.sigmoid))
+
+
+model.compile(optimizer = 'adam', loss = 'binary_crossentropy', metrics = ['accuracy'])
+
+model.fit(xtrain, ytrain, batch_size = 50, epochs = 4)
+
+model.save('pulsar2.model')
+
+#analyse results with confusion matrix
+
+model = tf.keras.models.load_model('pulsar1.model')
+
+predictions = model.predict(xtest)
+
+predictions[predictions <0.5] = 0
+predictions[predictions >= 0.5] = 1
+
+cm1 = confusion_matrix(ytest, predictions)
+
+ax = sns.heatmap(cm1, annot = True, fmt = 'd')
+ax.set_xlabel('Predicted labels')
+ax.set_ylabel('True labels')
+ax.xaxis.set_ticklabels(['Non-pulsar', 'Pulsar'])
+ax.yaxis.set_ticklabels(['Non-pulsar', 'Pulsar'])
+ax.set_title('Confusion matrix for Model_1')
+plt.show()
