@@ -1,0 +1,42 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from sklearn.model_selection import train_test_split
+import tensorflow as tf
+from sklearn.preprocessing import StandardScaler
+from matplotlib.colors import ListedColormap
+import seaborn as sns
+from sklearn.metrics import confusion_matrix
+
+data = pd.read_csv('DATA/Economic_data1.csv')
+x = data.Output_gap
+y = data.Inflation_gap
+
+X = np.column_stack((x,y))
+Y = data.interest_rate_rise
+Y = Y.values
+
+train_X, test_X, train_Y, test_Y = train_test_split(X, Y, test_size = 0.2, stratify = Y, random_state = 0)
+print(len(test_Y))
+model = tf.keras.models.Sequential()
+model.add(tf.keras.layers.Dense(10, input_dim = 2, kernel_initializer = 'normal', activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(1, activation = tf.nn.sigmoid))
+model.compile(optimizer = 'adam',
+             loss = 'binary_crossentropy',
+             metrics = ['accuracy'])
+model.fit(train_X, train_Y, batch_size = 2, epochs = 200, verbose=0)
+scores = model.evaluate(test_X,test_Y, verbose=1)
+print("Accuracy: %.2f%%" % (scores[1]*100))
+
+predictions = model.predict(test_X)
+predictions[predictions < 0.5] = 0
+predictions[predictions >= 0.5] = 1
+confusion_matrix = confusion_matrix(test_Y,predictions)
+
+ax = plt.figure(figsize = (10,10))
+ax = sns.heatmap(confusion_matrix, annot=True, cmap = 'Blues')
+ax = plt.ylabel('True Values')
+ax = plt.xlabel('Predictions')
+ax = plt.title('Will inflation rates rise?')
+plt.show()
+
