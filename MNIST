@@ -1,0 +1,40 @@
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import numpy as np
+import pickle
+
+xtrain = pickle.load(open('xtrain', 'rb'))
+ytrain = pickle.load(open('ytrain', 'rb'))
+
+model = tf.keras.models.Sequential()
+
+model.add(tf.layers.Flatten(input_shape = (xtrain[0].shape)))
+model.add(tf.keras.layers.Dense(128, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(128, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(128, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dense(10, activation = tf.nn.softmax))
+
+model.compile(optimizer = 'adam,
+              loss = 'sparse_categorical_crosstentropy',
+              metrics = ['accuracy'])
+
+model.fit(xtrain, ytrain, batch_size = 1000, epochs = 5)
+
+model.save('NumberReader.model')
+
+import tensorflow as tf
+import matplotlib.pyplot as plt
+import pickle
+
+xtest = pickle.load(open('xtest', 'rb'))
+ytest = pickle.load(open('ytest', 'rb'))
+
+model = tf.keras.models.load_model('NumberReader.model')
+
+predictions = model.predict([xtest])
+
+xtest = tf.keras.utils.normalize(xtest, axis = 1)
+
+val_loss, val_acc = model.evaluate(xtest, ytest, steps = 100)
+
+print(val_loss, val_acc)
