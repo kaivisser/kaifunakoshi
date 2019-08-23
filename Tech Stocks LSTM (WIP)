@@ -1,0 +1,147 @@
+import numpy as np
+import pandas as pd
+from sklearn.metrics import mean_squared_error
+from sklearn.preprocessing import MinMaxScaler
+from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import scale
+from collections import deque
+import tensorflow as tf
+from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
+import math
+import matplotlib.pyplot as plt
+import random
+import time
+
+SEQ_LEN = 30
+FUTURE_PERIOD_PREDICT = 1
+STOCK_TO_PREDICT = 'AAPL'
+
+def classify(current, future):
+    if float(future) > float(current):
+        return 1
+    else:
+        return 0
+    
+
+main_df = pd.DataFrame()
+
+Stocks = ['AAPL']#,'MSFT','IBM','INTC']
+
+for Stock in Stocks:
+    dataset = f'DATA/{Stock}.csv'
+    df = pd.read_csv(dataset).iloc[1:]
+    df.rename(columns={'Close': f'{Stock}_Close', 'Volume':f'{Stock}_volume'}, inplace = True)
+    df.set_index('Date', inplace = True)
+    df = df[[f'{Stock}_Close', f'{Stock}_volume']]
+    if len(main_df) == 0:
+        main_df = df
+    else:
+        main_df = main_df.join(df)
+
+
+main_df['future'] = main_df[f'{STOCK_TO_PREDICT}_Close'].shift(-FUTURE_PERIOD_PREDICT)
+
+main_df['target'] = list(map(classify, main_df[f'{STOCK_TO_PREDICT}_Close'], main_df['future']))
+
+Date = sorted(main_df.index.values)
+last_5pct = Date[-int(0.05*len(Date))]
+
+test_main_df = main_df[(main_df.index >= last_5pct)]
+
+main_df = main_df[(main_df.index < last_5pct)]
+scaler = MinMaxScaler(-1,1)                  
+                  
+def preprocess(df):
+    df = df.drop("future", 1)
+    for col in df.columns:
+        if col != "target":  
+            #df[col] = df[col].astype(float).pct_change()
+            df[col] = df[col].astype(float)
+            df[col] = scaler.fit(df[col])
+            df.dropna(inplace=True)  
+            df[col] = scale(df[col].values)  
+    df.dropna(inplace=True)
+    
+    sequential_data = []
+    prev_days = deque(maxlen=SEQ_LEN)
+    for i in df.values:
+        prev_days.append([n for n in i[:-1]])
+        if len(prev_days) == SEQ_LEN:
+            sequential_data.append([np.array(prev_days), i[-1]])
+            
+    random.shuffle(sequential_data)
+           
+    buys = []
+    sells = []
+    
+    for seq, target in sequential_data:
+        if target == 0:
+            sells.append([seq, target])
+        elif target ==1:
+            buys.append([seq,target])
+    random.shuffle(buys)
+    random.shuffle(sells)
+    
+    lower = min(len(buys), len(sells))
+    
+    buys = buys[:lower]
+    sells = sells[:lower]
+    
+    sequential_data = buys+sells
+    
+    random.shuffle(sequential_data)
+    
+    X = []
+    y = []
+    
+    for seq, target in sequential_data:
+        X.append(seq)
+        y.append(target)
+        
+    return np.array(X), y
+
+train_x, train_y = preprocess(main_df)
+test_x, test_y = preprocess(test_main_df)
+print(test_x)
+#print(len(train_x))
+#print(len(train_y))
+#print(len(test_x))
+#print(len(test_y))
+
+
+
+modelname = f'AAPL_predicter{int(time.time())}'
+
+model = tf.keras.models.Sequential()
+
+model.add(tf.keras.layers.CuDNNLSTM(128, input_shape=(train_x.shape[1:]), return_sequences = True))
+
+model.add(tf.keras.layers.BatchNormalization())
+
+model.add(tf.keras.layers.CuDNNLSTM(250, return_sequences = True))
+model.add(tf.keras.layers.Dropout(0.2))
+model.add(tf.keras.layers.BatchNormalization())
+
+model.add(tf.keras.layers.CuDNNLSTM(200))
+model.add(tf.keras.layers.Dropout(0.2))
+model.add(tf.keras.layers.BatchNormalization())
+
+model.add(tf.keras.layers.Dense(100, activation = tf.nn.relu))
+model.add(tf.keras.layers.Dropout(0.2))
+
+model.add(tf.keras.layers.Dense(1, activation = tf.nn.softmax))
+
+model.compile(optimizer = tf.keras.optimizers.Adam(lr = 0.001, decay = 1e-6),
+             loss = 'sparse_categorical_crossentropy',
+             metrics = ['accuracy'])
+
+tensorboard = TensorBoard(log_dir=f'logs/{modelname}')
+filepath = 'RNN_final-{epoch:02d}-{val_acc:.3f}'
+checkpoint = ModelCheckpoint("models/{}.model".format(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')) # saves only the best ones
+
+score = model.evaluate(test_x, test_y, verbose=0)
+print('Test loss:', score[0])
+print('Test accuracy:', score[1])
+
+
+history = model.fit(train_x, train_y, batch_size = 64, epochs = 25, validation_data = (test_x, test_y), callbacks = [tensorboard, checkpoint])
