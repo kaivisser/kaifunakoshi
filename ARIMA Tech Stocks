@@ -1,0 +1,47 @@
+import numpy as np
+import matplotlib.pyplot as plt
+import pandas as pd
+from statsmodels.tsa.arima_model import ARIMA
+from matplotlib import pyplot
+from sklearn.metrics import mean_squared_error
+plt.style.use('dark_background')
+
+PATHS = ['DATA/AAPL.csv', 'DATA/GOOGL.csv', 'DATA/MSFT.csv']
+
+Company = 0 #Choose company
+
+data = pd.read_csv(PATHS[Company]).close[::-1]
+TIME = pd.read_csv(PATHS[Company]).date[::-1]
+n = 0.99
+split = int(len(data) * n)
+train_data, test_data = data[0:split], data[split:len(data)]
+
+Train = train_data.values
+Test = test_data.values
+
+%matplotlib notebook
+fig = plt.figure()
+plt.ion()
+Predictions = []
+Predictions2 = []
+past = [i for i in Train]
+for i in range(len(Test)+10):
+    model = ARIMA(past, order=(2,1,0))
+    model_fit = model.fit(disp=0)
+    output = model_fit.forecast()
+    out_1st = output[0]
+    Predictions.append(out_1st)   
+    fig.canvas.draw()
+    if i<len(Test):        
+        actual = Test[i]
+        past.append(actual)  
+        plt.plot(Predictions, color = 'cyan', linewidth = 5)
+        fig.show()            
+    elif i>len(Test):      
+        model_fit = model.fit(disp=0)
+        output = model_fit.forecast()
+        out_1st = output[0]
+        actual = Predictions[-1]
+        past.append(actual)
+        plt.plot(Predictions, color = 'fuchsia', linewidth = 1)
+        
