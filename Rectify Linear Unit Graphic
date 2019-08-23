@@ -1,0 +1,47 @@
+import math
+
+#from sympy.interactive import printing
+#printing.init_printing(use_latex=True)
+def sigmoid(x):
+    a = []
+    for item in x:
+        a.append(1/(1+math.exp(-item)))
+    return a
+
+import matplotlib.pyplot as plt
+import matplotlib
+plt.style.use('dark_background')
+matplotlib.rcParams['text.usetex'] = True
+import numpy as np
+plt.figure(figsize = (25,13))
+x1 = np.arange(-10., 0.1, 0.1)
+x2 = np.arange(0, 10, 0.1)
+x3 = np.arange(2, 10, 0.1) 
+
+y2 = x2
+n = 4
+plt.axhline(y=0,xmin=0, xmax=0.5, linewidth = 6, color = 'blue')
+axes = plt.gca()
+axes.set_xlim([-6,6])
+axes.set_ylim([-1, 2])
+
+#plt.plot(x1,y1,'blue', linewidth=n)  
+#plt.plot(x2,y2,'dodgerblue', linewidth=n)
+plt.plot(x2,y2,'aqua', linewidth=n)
+
+# Move left y-axis and bottim x-axis to centre, passing through (0,0)
+axes.spines['left'].set_position('center')
+axes.spines['bottom'].set_position(('axes',1/3))
+
+# Eliminate upper and right axes
+axes.spines['right'].set_color('none')
+axes.spines['top'].set_color('none')
+
+# Show ticks in the left and lower axes only
+#axes.xaxis.set_ticks_position('bottom')
+#axes.yaxis.set_ticks_position('left')
+axes.xaxis.set_tick_params(labelsize=30)
+axes.yaxis.set_tick_params(labelsize=30)
+#plt.legend(loc='best')
+plt.title(r'Rectified Linear unit \qquad \qquad \qquad $\textrm{ReLU}(a) = \textrm{max}(0,a)$', y =0.6, fontsize = 60)
+plt.show()
