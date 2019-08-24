@@ -1,4 +1,4 @@
-```Python
+```python
 import matplotlib.pyplot as plt
 import statsmodels.tsa.seasonal as smt
 import numpy as np 
