@@ -1,84 +1,88 @@
-import numpy as np
-import pandas as pd
-from sklearn.metrics import mean_squared_error
+import matplotlib.pyplot as plt
+import statsmodels.tsa.seasonal as smt
+import numpy as np 
+import pandas as pd 
+import random
+import datetime as dt
+from collections import deque
+from sklearn import linear_model 
+from sklearn import preprocessing
+from sklearn.metrics import mean_absolute_error
 from sklearn.preprocessing import MinMaxScaler
 from sklearn.preprocessing import StandardScaler
 from sklearn.preprocessing import scale
-from collections import deque
 import tensorflow as tf
-from tensorflow.keras.callbacks import TensorBoard, ModelCheckpoint
-import math
-import matplotlib.pyplot as plt
-import random
-import time
 
-SEQ_LEN = 30
-FUTURE_PERIOD_PREDICT = 1
-STOCK_TO_PREDICT = 'AAPL'
+#import data
+DATA = pd.read_csv('DATA/dataset.csv')
+DATA = DATA.rename(columns={'Unnamed: 0': 'time'})
 
-def classify(current, future):
+df = DATA.drop(['AAPL','AAPL.1','AAPL.2',
+                'AMZN','AMZN.1','AMZN.2',
+                'GOOGL','GOOGL.1','GOOGL.2',
+                'INTC','INTC.1','INTC.2',
+                'MSFT','MSFT.1','MSFT.2',
+                'NFLX','NFLX.1','NFLX.2'], axis=1) #3 = price, 4 = volume
+main_df = df.drop(df.index[[0,1]])
+for c in main_df.columns:
+    print(c)
+
+#dataframe manipulation & model parameters
+SEQ = 60
+FUTURES = 5 #future period to predict (minutes)
+STOCK = 'AAPL' #stock to predict [AAPL, AMZN, GOOGL, INTC, MSFT, NFLX]
+EPOCHS = 10
+BATCH_SIZE = 128
+NAME = f'{SEQ}-SEQ-{STOCK}'
+
+def classify(current, future): #classify the change (1 = price increase)
     if float(future) > float(current):
         return 1
     else:
         return 0
-    
 
-main_df = pd.DataFrame()
+main_df['future'] = main_df[f'{STOCK}.3'].shift(-FUTURES)
+main_df['target'] = list(map(classify, main_df[f'{STOCK}.3'], main_df['future']))
 
-Stocks = ['AAPL']#,'MSFT','IBM','INTC']
+print(main_df[[f'{STOCK}.3','future','target']].head(10))
 
-for Stock in Stocks:
-    dataset = f'DATA/{Stock}.csv'
-    df = pd.read_csv(dataset).iloc[1:]
-    df.rename(columns={'Close': f'{Stock}_Close', 'Volume':f'{Stock}_volume'}, inplace = True)
-    df.set_index('Date', inplace = True)
-    df = df[[f'{Stock}_Close', f'{Stock}_volume']]
-    if len(main_df) == 0:
-        main_df = df
-    else:
-        main_df = main_df.join(df)
+#prepare & balance train / test data
+times = sorted(main_df.time.values)
+last5 = times[-int(0.05*len(times))]
 
+scaler = MinMaxScaler(-1,1)   
 
-main_df['future'] = main_df[f'{STOCK_TO_PREDICT}_Close'].shift(-FUTURE_PERIOD_PREDICT)
-
-main_df['target'] = list(map(classify, main_df[f'{STOCK_TO_PREDICT}_Close'], main_df['future']))
-
-Date = sorted(main_df.index.values)
-last_5pct = Date[-int(0.05*len(Date))]
-
-test_main_df = main_df[(main_df.index >= last_5pct)]
-
-main_df = main_df[(main_df.index < last_5pct)]
-scaler = MinMaxScaler(-1,1)                  
-                  
-def preprocess(df):
+def preprocess_df(df):
     df = df.drop("future", 1)
     for col in df.columns:
         if col != "target":  
-            #df[col] = df[col].astype(float).pct_change()
-            df[col] = df[col].astype(float)
-            df[col] = scaler.fit(df[col])
-            df.dropna(inplace=True)  
+            #if col != 'time':
+            df[col] = df[col].astype(float).pct_change()
             df[col] = scale(df[col].values)  
+
     df.dropna(inplace=True)
     
     sequential_data = []
-    prev_days = deque(maxlen=SEQ_LEN)
+    prev_days = deque(maxlen=SEQ)
+    
     for i in df.values:
         prev_days.append([n for n in i[:-1]])
-        if len(prev_days) == SEQ_LEN:
+        if len(prev_days) == SEQ:
             sequential_data.append([np.array(prev_days), i[-1]])
             
     random.shuffle(sequential_data)
-           
-    buys = []
+    
+    #balance data
+    
+    buys = [] 
     sells = []
     
     for seq, target in sequential_data:
         if target == 0:
             sells.append([seq, target])
-        elif target ==1:
-            buys.append([seq,target])
+        elif target == 1:
+            buys.append([seq, target])
+    
     random.shuffle(buys)
     random.shuffle(sells)
     
@@ -87,61 +91,56 @@ def preprocess(df):
     buys = buys[:lower]
     sells = sells[:lower]
     
-    sequential_data = buys+sells
-    
+    sequential_data = buys + sells
     random.shuffle(sequential_data)
     
     X = []
-    y = []
+    Y = []
     
     for seq, target in sequential_data:
         X.append(seq)
-        y.append(target)
-        
-    return np.array(X), y
+        Y.append(target)
+    df.dropna(inplace=True)
+    
+    return np.array(X), Y  
 
-train_x, train_y = preprocess(main_df)
-test_x, test_y = preprocess(test_main_df)
-print(test_x)
-#print(len(train_x))
-#print(len(train_y))
-#print(len(test_x))
-#print(len(test_y))
+test = main_df[(main_df.time >= last5)]
+train = main_df[(main_df.time <= last5)]
+test_data = test.drop('time', axis = 'columns')
+train_data = train.drop('time', axis = 'columns')
 
+train_x, train_y = preprocess_df(train_data)
+test_x, test_y = preprocess_df(test_data)
 
+print(len(train_x), len(train_y), len(test_x), len(test_y))
 
-modelname = f'AAPL_predicter{int(time.time())}'
+#build model
 
 model = tf.keras.models.Sequential()
 
 model.add(tf.keras.layers.CuDNNLSTM(128, input_shape=(train_x.shape[1:]), return_sequences = True))
-
-model.add(tf.keras.layers.BatchNormalization())
-
-model.add(tf.keras.layers.CuDNNLSTM(250, return_sequences = True))
 model.add(tf.keras.layers.Dropout(0.2))
 model.add(tf.keras.layers.BatchNormalization())
 
-model.add(tf.keras.layers.CuDNNLSTM(200))
+model.add(tf.keras.layers.CuDNNLSTM(128, return_sequences = True))
 model.add(tf.keras.layers.Dropout(0.2))
 model.add(tf.keras.layers.BatchNormalization())
 
-model.add(tf.keras.layers.Dense(100, activation = tf.nn.relu))
+model.add(tf.keras.layers.CuDNNLSTM(128))
+model.add(tf.keras.layers.Dropout(0.2))
+model.add(tf.keras.layers.BatchNormalization())
+
+model.add(tf.keras.layers.Dense(32, activation = 'relu'))
 model.add(tf.keras.layers.Dropout(0.2))
 
-model.add(tf.keras.layers.Dense(1, activation = tf.nn.softmax))
+model.add(tf.keras.layers.Dense(2, activation = 'softmax'))
 
 model.compile(optimizer = tf.keras.optimizers.Adam(lr = 0.001, decay = 1e-6),
              loss = 'sparse_categorical_crossentropy',
              metrics = ['accuracy'])
 
-tensorboard = TensorBoard(log_dir=f'logs/{modelname}')
-filepath = 'RNN_final-{epoch:02d}-{val_acc:.3f}'
-checkpoint = ModelCheckpoint("models/{}.model".format(filepath, monitor='val_acc', verbose=1, save_best_only=True, mode='max')) # saves only the best ones
-
-score = model.evaluate(test_x, test_y, verbose=0)
-print('Test loss:', score[0])
-print('Test accuracy:', score[1])
-
-
-history = model.fit(train_x, train_y, batch_size = 64, epochs = 25, validation_data = (test_x, test_y), callbacks = [tensorboard, checkpoint])
+history = model.fit(
+    train_x, train_y,
+    batch_size = BATCH_SIZE, 
+    epochs = EPOCHS,
+    validation_data = (test_x, test_y))
