@@ -1,3 +1,4 @@
+```Python
 import matplotlib.pyplot as plt
 import statsmodels.tsa.seasonal as smt
 import numpy as np 
@@ -144,3 +145,4 @@ history = model.fit(
     batch_size = BATCH_SIZE, 
     epochs = EPOCHS,
     validation_data = (test_x, test_y))
+```
